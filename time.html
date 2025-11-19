@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Accurate Time</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 2rem;
+      text-align: center;
+      padding-top: 40px;
+    }
+  </style>
+</head>
+<body>
+  <div id="time">Loading time…</div>
+
+  <script>
+    async function getAccurateTime() {
+      try {
+        // Uses a Stratum-1 NTP-synced API
+        const response = await fetch("https://worldtimeapi.org/api/timezone/etc/utc");
+        const data = await response.json();
+        let now = new Date(data.utc_datetime);
+
+        function updateClock() {
+          now.setSeconds(now.getSeconds() + 1);
+          document.getElementById("time").textContent = now.toUTCString();
+        }
+
+        updateClock();
+        setInterval(updateClock, 1000);
+      } catch (e) {
+        document.getElementById("time").textContent = "Error loading time.";
+      }
+    }
+
+    getAccurateTime();
+  </script>
+
+</body>
+</html>
