@@ -1,0 +1,124 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Jukebox Remote</title>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      margin: 16px;
+    }
+    input, button {
+      font-size: 16px;
+      padding: 10px;
+    }
+    .row { display:flex; gap:8px; }
+    .card {
+      display:grid;
+      grid-template-columns: 120px 1fr auto;
+      gap: 10px;
+      align-items:center;
+      padding: 10px 0;
+      border-bottom: 1px solid #eee;
+    }
+    img { width:120px; border-radius:10px; }
+    .title { font-weight: 600; }
+  </style>
+</head>
+
+<body>
+  <h2>Jukebox Remote</h2>
+
+  <div class="row">
+    <input id="q" placeholder="Search YouTube…" />
+    <button id="searchBtn">Search</button>
+  </div>
+
+  <div id="results"></div>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBNcetbvYsxDVAAezn0GdxVaLeW7j2EoO4",
+      authDomain: "jukebox-queue-f62c7.firebaseapp.com",
+      databaseURL: "https://jukebox-queue-f62c7-default-rtdb.firebaseio.com",
+      projectId: "jukebox-queue-f62c7",
+      storageBucket: "jukebox-queue-f62c7.firebasestorage.app",
+      messagingSenderId: "288785705112",
+      appId: "1:288785705112:web:1e721031fc856d056ac8ed"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const ROOM = (location.hash || "#main").replace("#", "");
+    const queueRef = db.ref(`rooms/${ROOM}/queue`);
+
+    const YT_API_KEY = "AIzaSyCFI__LFEbvmy7aULYvNRvr37rdAVasDHU";
+
+    const qEl = document.getElementById("q");
+    const resultsEl = document.getElementById("results");
+
+    function escapeHtml(s) {
+      return (s||"").replace(/[&<>"']/g, m =>
+        ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m])
+      );
+    }
+
+    async function searchYT(query) {
+      const url =
+        "https://www.googleapis.com/youtube/v3/search" +
+        `?part=snippet&type=video&maxResults=10&q=${encodeURIComponent(query)}` +
+        `&key=${YT_API_KEY}`;
+
+      const r = await fetch(url);
+      return r.json();
+    }
+
+    async function addToQueue(v) {
+      await queueRef.push({
+        videoId: v.videoId,
+        title: v.title,
+        thumb: v.thumb,
+        addedAt: Date.now()
+      });
+    }
+
+    document.getElementById("searchBtn").onclick = async () => {
+      const q = qEl.value.trim();
+      if (!q) return;
+
+      resultsEl.innerHTML = "Searching…";
+      const data = await searchYT(q);
+
+      resultsEl.innerHTML = "";
+      (data.items || []).forEach(it => {
+        const v = {
+          videoId: it.id.videoId,
+          title: it.snippet.title,
+          thumb: it.snippet.thumbnails.medium.url
+        };
+
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+          <img src="${v.thumb}">
+          <div class="title">${escapeHtml(v.title)}</div>
+          <button>Add</button>
+        `;
+        card.querySelector("button").onclick = async () => {
+          await addToQueue(v);
+          card.querySelector("button").textContent = "Added";
+        };
+        resultsEl.appendChild(card);
+      });
+    };
+  </script>
+</body>
+</html>
+
