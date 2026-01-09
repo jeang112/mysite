@@ -1,145 +1,167 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>Music Video Jukebox</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Jukebox Player</title>
 
-<style>
-  body {
-    font-family: Arial, sans-serif;
-    background: #000;
-    color: #fff;
-    text-align: center;
-  }
-  #player {
-    margin: 10px auto;
-    max-width: 100%;
-  }
-  input {
-    width: 65%;
-    padding: 8px;
-    margin-top: 10px;
-  }
-  button {
-    padding: 8px 12px;
-    margin-left: 5px;
-    cursor: pointer;
-  }
-  .results, ul {
-    list-style: none;
-    padding: 0;
-    max-width: 800px;
-    margin: 10px auto;
-  }
-  li {
-    display: flex;
-    align-items: center;
-    padding: 8px;
-    border-bottom: 1px solid #333;
-  }
-  img {
-    width: 120px;
-    margin-right: 10px;
-  }
-  .title {
-    flex-grow: 1;
-    text-align: left;
-  }
-</style>
+  <style>
+    body {
+      margin: 0;
+      background: #000;
+      color: #fff;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+    }
+    #playerBox {
+      width: 100vw;
+      height: 56.25vw;
+      max-height: 100vh;
+      max-width: 177.78vh;
+      margin: auto;
+    }
+    #player { width: 100%; height: 100%; }
+    #status {
+      padding: 10px 14px;
+      font-size: 14px;
+      opacity: .85;
+    }
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+    }
+    #overlay button {
+      font-size: 22px;
+      padding: 14px 18px;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+    }
+  </style>
 </head>
 
 <body>
+  <div id="playerBox"><div id="player"></div></div>
+  <div id="status">Loading…</div>
 
-<h2>🎶 Music Video Jukebox</h2>
+  <div id="overlay">
+    <button id="startBtn">Tap to Start</button>
+  </div>
 
-<!-- Player container -->
-<div id="player"></div>
+  <!-- YouTube IFrame API -->
+  <script>
+    const tag = document.createElement("script");
+    tag.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(tag);
+  </script>
 
-<input id="searchInput" placeholder="Search for a music video">
-<button onclick="search()">Search</button>
+  <!-- Firebase (compat SDK) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
-<ul class="results" id="results"></ul>
+  <script>
+    // ===== Firebase config =====
+    const firebaseConfig = {
+      apiKey: "AIzaSyBNcetbvYsxDVAAezn0GdxVaLeW7j2EoO4",
+      authDomain: "jukebox-queue-f62c7.firebaseapp.com",
+      databaseURL: "https://jukebox-queue-f62c7-default-rtdb.firebaseio.com",
+      projectId: "jukebox-queue-f62c7",
+      storageBucket: "jukebox-queue-f62c7.firebasestorage.app",
+      messagingSenderId: "288785705112",
+      appId: "1:288785705112:web:1e721031fc856d056ac8ed"
+    };
 
-<h3>Up Next</h3>
-<ul id="queue"></ul>
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-<script src="https://www.youtube.com/iframe_api"></script>
+    const ROOM = (location.hash || "#main").replace("#", "");
+    const queueRef = db.ref(`rooms/${ROOM}/queue`);
+    const nowPlayingRef = db.ref(`rooms/${ROOM}/nowPlaying`);
 
-<script>
-const API_KEY = "AIzaSyCFI__LFEbvmy7aULYvNRvr37rdAVasDHU";
+    const statusEl = document.getElementById("status");
+    const overlay = document.getElementById("overlay");
+    const startBtn = document.getElementById("startBtn");
 
-let player;
-let videoQueue = [];
+    let player, ready = false, playing = false;
 
-function onYouTubeIframeAPIReady() {
-  player = new YT.Player('player', {
-    height: '390',
-    width: '640',
-    playerVars: {
-      fs: 1,                 // ✅ ENABLE FULLSCREEN
-      rel: 0,
-      modestbranding: 1
-    },
-    events: {
-      'onStateChange': onPlayerStateChange
+    function setStatus(msg) {
+      statusEl.textContent = msg;
     }
-  });
-}
 
-function search() {
-  const query = document.getElementById('searchInput').value;
-  fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&maxResults=5&q=${encodeURIComponent(query)}&key=${API_KEY}`)
-    .then(res => res.json())
-    .then(data => renderResults(data.items));
-}
+    async function popNext() {
+      const snap = await queueRef.orderByChild("addedAt").limitToFirst(1).get();
+      if (!snap.exists()) return null;
 
-function renderResults(items) {
-  const results = document.getElementById('results');
-  results.innerHTML = '';
+      const key = Object.keys(snap.val())[0];
+      const item = snap.val()[key];
+      await queueRef.child(key).remove();
+      return item;
+    }
 
-  items.forEach(item => {
-    const li = document.createElement('li');
-    li.innerHTML = `
-      <img src="${item.snippet.thumbnails.medium.url}">
-      <div class="title">${item.snippet.title}</div>
-      <button onclick="addToQueue('${item.id.videoId}')">Add</button>
-    `;
-    results.appendChild(li);
-  });
-}
+    async function playNext() {
+      if (!ready) return;
 
-function addToQueue(videoId) {
-  videoQueue.push(videoId);
-  renderQueue();
+      const next = await popNext();
+      if (!next) {
+        playing = false;
+        setStatus("Queue empty — waiting…");
+        return;
+      }
 
-  if (player.getPlayerState() !== YT.PlayerState.PLAYING) {
-    playNext();
-  }
-}
+      playing = true;
+      setStatus(`Now playing: ${next.title || next.videoId}`);
 
-function playNext() {
-  if (videoQueue.length === 0) return;
-  const next = videoQueue.shift();
-  player.loadVideoById(next);
-  renderQueue();
-}
+      try { player.mute(); } catch {}
+      player.loadVideoById(next.videoId);
 
-function onPlayerStateChange(event) {
-  if (event.data === YT.PlayerState.ENDED) {
-    playNext();
-  }
-}
+      setTimeout(() => {
+        try {
+          if (player.getPlayerState() !== YT.PlayerState.PLAYING) {
+            overlay.style.display = "flex";
+          }
+        } catch {
+          overlay.style.display = "flex";
+        }
+      }, 1200);
+    }
 
-function renderQueue() {
-  const list = document.getElementById('queue');
-  list.innerHTML = '';
-  videoQueue.forEach((id, i) => {
-    const li = document.createElement('li');
-    li.textContent = `${i + 1}. ${id}`;
-    list.appendChild(li);
-  });
-}
-</script>
+    startBtn.onclick = () => {
+      overlay.style.display = "none";
+      try {
+        player.playVideo();
+        player.unMute();
+      } catch {}
+    };
 
+    window.onYouTubeIframeAPIReady = function() {
+      player = new YT.Player("player", {
+        playerVars: { autoplay: 1, controls: 1, rel: 0 },
+        events: {
+          onReady: async () => {
+            ready = true;
+            setStatus("Ready — waiting for queue");
+            await playNext();
+          },
+          onStateChange: async (e) => {
+            if (e.data === YT.PlayerState.PLAYING) overlay.style.display = "none";
+            if (e.data === YT.PlayerState.ENDED) await playNext();
+          },
+          onError: async () => {
+            setStatus("Video error — skipping");
+            await playNext();
+          }
+        }
+      });
+    };
+
+    queueRef.on("child_added", async () => {
+      if (!playing) await playNext();
+    });
+  </script>
 </body>
 </html>
+
