@@ -56,7 +56,8 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    const ROOM = (location.hash || "#main").replace("#", "");
+    const ROOM = (location.hash || "#default").replace("#", "");
+    console.log("[remote] ROOM =", ROOM);
     const queueRef = db.ref(`rooms/${ROOM}/queue`);
 
     const YT_API_KEY = "AIzaSyCFI__LFEbvmy7aULYvNRvr37rdAVasDHU";
@@ -80,21 +81,41 @@
       return r.json();
     }
 
-    async function addToQueue(v) {
-      await queueRef.push({
-        videoId: v.videoId,
-        title: v.title,
-        thumb: v.thumb,
-        addedAt: Date.now()
-      });
-    }
+     async function addToQueue(v) {
+       try {
+         const payload = {
+           youtubeId: v.videoId,   // ✅ what player likely reads
+           videoId: v.videoId,     // keep for compatibility
+           title: v.title,
+           thumb: v.thumb,
+           createdAt: Date.now(),  // ✅ common sort field
+           addedAt: Date.now()
+         };
+ 
+         console.log("[remote] writing queue item:", payload);
+         await queueRef.push(payload);
+         console.log("[remote] write succeeded ✅");
+       } catch (e) {
+         console.error("[remote] write failed ❌", e);
+         alert("Write failed: " + (e?.message || e));
+         throw e;
+       }
+     }
+
 
     document.getElementById("searchBtn").onclick = async () => {
       const q = qEl.value.trim();
       if (!q) return;
 
-      resultsEl.innerHTML = "Searching…";
-      const data = await searchYT(q);
+       resultsEl.innerHTML = "Searching…";
+       const data = await searchYT(q);
+       console.log("[remote] YT response:", data);
+       if (data?.error) {
+         resultsEl.innerHTML =
+           "YouTube API error: " + escapeHtml(data.error.message || "Unknown error");
+         return;
+       }
+
 
       resultsEl.innerHTML = "";
       (data.items || []).forEach(it => {
@@ -111,10 +132,19 @@
           <div class="title">${escapeHtml(v.title)}</div>
           <button>Add</button>
         `;
-        card.querySelector("button").onclick = async () => {
-          await addToQueue(v);
-          card.querySelector("button").textContent = "Added";
-        };
+         card.querySelector("button").onclick = async () => {
+           const btn = card.querySelector("button");
+           btn.disabled = true;
+           btn.textContent = "Adding…";
+           try {
+             await addToQueue(v);
+             btn.textContent = "Added ✅";
+           } catch {
+             btn.disabled = false;
+             btn.textContent = "Add";
+           }
+         };
+
         resultsEl.appendChild(card);
       });
     };
