@@ -77,8 +77,9 @@
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-
-    const ROOM = (location.hash || "#main").replace("#", "");
+    console.log("[player] ROOM =", ROOM);
+    const ROOM = (location.hash || "#default").replace("#", "");
+    
     const queueRef = db.ref(`rooms/${ROOM}/queue`);
     const nowPlayingRef = db.ref(`rooms/${ROOM}/nowPlaying`);
 
