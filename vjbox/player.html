@@ -74,11 +74,15 @@
       messagingSenderId: "288785705112",
       appId: "1:288785705112:web:1e721031fc856d056ac8ed"
     };
+    
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-    console.log("[player] ROOM =", ROOM);
-    const ROOM = (location.hash || "#default").replace("#", "");
+const ROOM = (location.hash || "#default").replace("#", "");
+console.log("[player] ROOM =", ROOM);
+console.log("[player] queue path =", `rooms/${ROOM}/queue`);
+
+
     
     const queueRef = db.ref(`rooms/${ROOM}/queue`);
     const nowPlayingRef = db.ref(`rooms/${ROOM}/nowPlaying`);
@@ -109,15 +113,24 @@
       const next = await popNext();
       if (!next) {
         playing = false;
-        setStatus("Queue empty — waiting…");
+        setStatus("Queue empty 1.1 — waiting…");
         return;
       }
 
       playing = true;
-      setStatus(`Now playing: ${next.title || next.videoId}`);
+      
+const vid = next.videoId || next.youtubeId;
+setStatus(`Now playing 1.1: ${next.title || vid || "Unknown"}`);
 
-      try { player.mute(); } catch {}
-      player.loadVideoById(next.videoId);
+if (!vid) {
+  console.warn("[player] Missing video id on item:", next);
+  setStatus("Queue item missing video id — waiting…");
+  playing = false;
+  return;
+}
+
+player.loadVideoById(vid);
+
 
       setTimeout(() => {
         try {
