@@ -233,55 +233,58 @@
       }
     }
 
-    // Live queue listener sorted by pos
-    queueRef.orderByChild("pos").on("value", (snap) => {
-      const data = snap.val() || {};
-      queueOrdered = Object.entries(data).map(([key, item]) => ({ key, item }));
+// Live queue listener sorted by pos (preserves order!)
+queueRef.orderByChild("pos").on("value", (snap) => {
+  const ordered = [];
+  snap.forEach((childSnap) => {
+    ordered.push({ key: childSnap.key, item: childSnap.val() });
+  });
 
-      queueCountEl.textContent = String(queueOrdered.length);
+  queueOrdered = ordered;
+  queueCountEl.textContent = String(queueOrdered.length);
 
-      if (queueOrdered.length === 0) {
-        queueListEl.innerHTML = `<div class="muted">Queue is empty.</div>`;
-        return;
-      }
+  if (queueOrdered.length === 0) {
+    queueListEl.innerHTML = `<div class="muted">Queue is empty.</div>`;
+    return;
+  }
 
-      queueListEl.innerHTML = "";
-      queueOrdered.forEach(({ key, item }, i) => {
-        const title = escapeHtml(item?.title || "(untitled)");
-        const thumb = item?.thumb || "";
-        const status = escapeHtml(item?.status || "queued");
-        const createdAt = item?.createdAt;
+  queueListEl.innerHTML = "";
+  queueOrdered.forEach(({ key, item }, i) => {
+    const title = escapeHtml(item?.title || "(untitled)");
+    const thumb = item?.thumb || "";
+    const status = escapeHtml(item?.status || "queued");
+    const createdAt = item?.createdAt;
 
-        const row = document.createElement("div");
-        row.className = "queueItem";
-        row.innerHTML = `
-          <img class="queue-thumb" src="${thumb}" alt="">
-          <div>
-            <div class="queueTitle">${i + 1}. ${title}</div>
-            <div class="queueMeta">${status} • ${escapeHtml(formatAge(createdAt))}</div>
-          </div>
-          <div class="controls">
-            <button class="small upBtn" title="Move up">↑</button>
-            <button class="small downBtn" title="Move down">↓</button>
-            <button class="small rmBtn" title="Remove">✕</button>
-          </div>
-        `;
+    const row = document.createElement("div");
+    row.className = "queueItem";
+    row.innerHTML = `
+      <img class="queue-thumb" src="${thumb}" alt="">
+      <div>
+        <div class="queueTitle">${i + 1}. ${title}</div>
+        <div class="queueMeta">${status} • ${escapeHtml(formatAge(createdAt))}</div>
+      </div>
+      <div class="controls">
+        <button class="small upBtn" title="Move up">↑</button>
+        <button class="small downBtn" title="Move down">↓</button>
+        <button class="small rmBtn" title="Remove">✕</button>
+      </div>
+    `;
 
-        const up = row.querySelector(".upBtn");
-        const down = row.querySelector(".downBtn");
-        const rm = row.querySelector(".rmBtn");
+    const up = row.querySelector(".upBtn");
+    const down = row.querySelector(".downBtn");
+    const rm = row.querySelector(".rmBtn");
 
-        // Disable up/down at ends
-        if (i === 0) up.disabled = true;
-        if (i === queueOrdered.length - 1) down.disabled = true;
+    if (i === 0) up.disabled = true;
+    if (i === queueOrdered.length - 1) down.disabled = true;
 
-        up.onclick = () => moveItem(key, -1);
-        down.onclick = () => moveItem(key, +1);
-        rm.onclick = () => removeFromQueue(key);
+    up.onclick = () => moveItem(key, -1);
+    down.onclick = () => moveItem(key, +1);
+    rm.onclick = () => removeFromQueue(key);
 
-        queueListEl.appendChild(row);
-      });
-    });
+    queueListEl.appendChild(row);
+  });
+});
+
 
     // Search on Enter
     qEl.addEventListener("keydown", (e) => {
