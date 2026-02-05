@@ -1,0 +1,338 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Jukebox Remote</title>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      margin: 16px;
+    }
+    input, button {
+      font-size: 16px;
+      padding: 10px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+    .panel {
+      border: 1px solid #eee;
+      border-radius: 14px;
+      padding: 12px;
+      background: #fff;
+    }
+    .panel h3 {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+    }
+    .row { display:flex; gap:8px; }
+
+    /* Search results cards (right pane) */
+    .card {
+      display:grid;
+      grid-template-columns: 120px 1fr auto;
+      gap: 10px;
+      align-items:center;
+      padding: 10px 0;
+      border-bottom: 1px solid #eee;
+    }
+    img.result-thumb { width:120px; border-radius:10px; }
+    .title { font-weight: 600; }
+
+    /* Queue list (left pane) */
+    .queueItem {
+      display: grid;
+      grid-template-columns: 56px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .queueItem:last-child { border-bottom: none; }
+
+    img.queue-thumb {
+      width:56px; height: 42px;
+      object-fit: cover;
+      border-radius: 10px;
+    }
+
+    .queueTitle { font-weight: 600; line-height: 1.2; font-size: 14px; }
+    .queueMeta { font-size: 12px; opacity: 0.75; margin-top: 2px; }
+
+    .controls { display: flex; gap: 6px; align-items: center; }
+    button.small { padding: 7px 9px; font-size: 14px; }
+
+    .muted { opacity: 0.75; }
+    .pill {
+      display:inline-block;
+      font-size: 12px;
+      padding: 2px 8px;
+      border: 1px solid #eee;
+      border-radius: 999px;
+      margin-left: 8px;
+      opacity: 0.85;
+    }
+  </style>
+</head>
+
+<body>
+  <h2>Jukebox Remote 1.3</h2>
+  <div class="muted" style="margin-bottom:12px;">
+    Room: <code id="roomLabel"></code>
+  </div>
+
+  <div class="layout">
+    <!-- LEFT: Queue -->
+    <div class="panel">
+      <h3>Current Queue <span class="pill" id="queueCount">0</span></h3>
+      <div id="queueList" class="muted">Loading…</div>
+    </div>
+
+    <!-- RIGHT: Search/Add -->
+    <div class="panel">
+      <h3>Search YouTube</h3>
+      <div class="row" style="margin-bottom:12px;">
+        <input id="q" placeholder="Search YouTube…" style="flex:1;" />
+        <button id="searchBtn">Search</button>
+      </div>
+      <div id="results"></div>
+    </div>
+  </div>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBNcetbvYsxDVAAezn0GdxVaLeW7j2EoO4",
+      authDomain: "jukebox-queue-f62c7.firebaseapp.com",
+      databaseURL: "https://jukebox-queue-f62c7-default-rtdb.firebaseio.com",
+      projectId: "jukebox-queue-f62c7",
+      storageBucket: "jukebox-queue-f62c7.firebasestorage.app",
+      messagingSenderId: "288785705112",
+      appId: "1:288785705112:web:1e721031fc856d056ac8ed"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const ROOM = (location.hash || "#default").replace("#", "");
+    document.getElementById("roomLabel").textContent = ROOM;
+
+    const queueRef = db.ref(`rooms/${ROOM}/queue`);
+    const YT_API_KEY = "AIzaSyCFI__LFEbvmy7aULYvNRvr37rdAVasDHU";
+
+    const qEl = document.getElementById("q");
+    const resultsEl = document.getElementById("results");
+    const queueListEl = document.getElementById("queueList");
+    const queueCountEl = document.getElementById("queueCount");
+
+    // Local cache of ordered queue for move up/down logic
+    let queueOrdered = []; // [{ key, item }]
+
+    function escapeHtml(s) {
+      return (s||"").replace(/[&<>"']/g, m =>
+        ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m])
+      );
+    }
+
+    function formatAge(ts) {
+      if (!ts) return "";
+      const diffMs = Date.now() - ts;
+      const mins = Math.floor(diffMs / 60000);
+      if (mins < 1) return "just now";
+      if (mins < 60) return `${mins}m ago`;
+      const hrs = Math.floor(mins / 60);
+      return `${hrs}h ago`;
+    }
+
+    async function searchYT(query) {
+      const url =
+        "https://www.googleapis.com/youtube/v3/search" +
+        `?part=snippet&type=video&maxResults=10&q=${encodeURIComponent(query)}` +
+        `&key=${YT_API_KEY}`;
+
+      const r = await fetch(url);
+      return r.json();
+    }
+
+    async function getNextPos() {
+      // Grab the current last item's pos and add 10
+      const snap = await queueRef.orderByChild("pos").limitToLast(1).once("value");
+      const val = snap.val();
+      if (!val) return 10;
+      const last = Object.values(val)[0];
+      const lastPos = Number(last?.pos ?? 0);
+      return (Number.isFinite(lastPos) ? lastPos : 0) + 10;
+    }
+
+    async function addToQueue(v) {
+      try {
+        const pos = await getNextPos();
+        const payload = {
+          youtubeId: v.videoId,
+          videoId: v.videoId,
+          title: v.title,
+          thumb: v.thumb,
+          createdAt: firebase.database.ServerValue.TIMESTAMP,
+          status: "queued",
+          pos
+        };
+
+        console.log("[remote] writing queue item:", payload);
+        await queueRef.push(payload);
+        console.log("[remote] write succeeded ✅");
+      } catch (e) {
+        console.error("[remote] write failed ❌", e);
+        alert("Write failed: " + (e?.message || e));
+        throw e;
+      }
+    }
+
+    async function removeFromQueue(key) {
+      const ok = confirm("Remove this item from the queue?");
+      if (!ok) return;
+      try {
+        await queueRef.child(key).remove();
+      } catch (e) {
+        console.error("[remote] remove failed ❌", e);
+        alert("Remove failed: " + (e?.message || e));
+      }
+    }
+
+    async function moveItem(key, direction /* -1 up, +1 down */) {
+      const idx = queueOrdered.findIndex(x => x.key === key);
+      if (idx === -1) return;
+
+      const swapWith = idx + direction;
+      if (swapWith < 0 || swapWith >= queueOrdered.length) return;
+
+      const a = queueOrdered[idx];
+      const b = queueOrdered[swapWith];
+
+      const aPos = Number(a.item?.pos ?? 0);
+      const bPos = Number(b.item?.pos ?? 0);
+
+      // Swap positions with a single multi-path update
+      const updates = {};
+      updates[`rooms/${ROOM}/queue/${a.key}/pos`] = bPos;
+      updates[`rooms/${ROOM}/queue/${b.key}/pos`] = aPos;
+
+      try {
+        await db.ref().update(updates);
+      } catch (e) {
+        console.error("[remote] move failed ❌", e);
+        alert("Move failed: " + (e?.message || e));
+      }
+    }
+
+    // Live queue listener sorted by pos
+    queueRef.orderByChild("pos").on("value", (snap) => {
+      const data = snap.val() || {};
+      queueOrdered = Object.entries(data).map(([key, item]) => ({ key, item }));
+
+      queueCountEl.textContent = String(queueOrdered.length);
+
+      if (queueOrdered.length === 0) {
+        queueListEl.innerHTML = `<div class="muted">Queue is empty.</div>`;
+        return;
+      }
+
+      queueListEl.innerHTML = "";
+      queueOrdered.forEach(({ key, item }, i) => {
+        const title = escapeHtml(item?.title || "(untitled)");
+        const thumb = item?.thumb || "";
+        const status = escapeHtml(item?.status || "queued");
+        const createdAt = item?.createdAt;
+
+        const row = document.createElement("div");
+        row.className = "queueItem";
+        row.innerHTML = `
+          <img class="queue-thumb" src="${thumb}" alt="">
+          <div>
+            <div class="queueTitle">${i + 1}. ${title}</div>
+            <div class="queueMeta">${status} • ${escapeHtml(formatAge(createdAt))}</div>
+          </div>
+          <div class="controls">
+            <button class="small upBtn" title="Move up">↑</button>
+            <button class="small downBtn" title="Move down">↓</button>
+            <button class="small rmBtn" title="Remove">✕</button>
+          </div>
+        `;
+
+        const up = row.querySelector(".upBtn");
+        const down = row.querySelector(".downBtn");
+        const rm = row.querySelector(".rmBtn");
+
+        // Disable up/down at ends
+        if (i === 0) up.disabled = true;
+        if (i === queueOrdered.length - 1) down.disabled = true;
+
+        up.onclick = () => moveItem(key, -1);
+        down.onclick = () => moveItem(key, +1);
+        rm.onclick = () => removeFromQueue(key);
+
+        queueListEl.appendChild(row);
+      });
+    });
+
+    // Search on Enter
+    qEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") document.getElementById("searchBtn").click();
+    });
+
+    document.getElementById("searchBtn").onclick = async () => {
+      const q = qEl.value.trim();
+      if (!q) return;
+
+      resultsEl.innerHTML = "Searching…";
+      const data = await searchYT(q);
+
+      if (data?.error) {
+        resultsEl.innerHTML =
+          "YouTube API error: " + escapeHtml(data.error.message || "Unknown error");
+        return;
+      }
+
+      resultsEl.innerHTML = "";
+      (data.items || []).forEach(it => {
+        const v = {
+          videoId: it.id.videoId,
+          title: it.snippet.title,
+          thumb: it.snippet.thumbnails.medium.url
+        };
+
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+          <img class="result-thumb" src="${v.thumb}">
+          <div class="title">${escapeHtml(v.title)}</div>
+          <button>Add</button>
+        `;
+
+        card.querySelector("button").onclick = async () => {
+          const btn = card.querySelector("button");
+          btn.disabled = true;
+          btn.textContent = "Adding…";
+          try {
+            await addToQueue(v);
+            btn.textContent = "Added ✅";
+          } catch {
+            btn.disabled = false;
+            btn.textContent = "Add";
+          }
+        };
+
+        resultsEl.appendChild(card);
+      });
+    };
+  </script>
+</body>
+</html>
