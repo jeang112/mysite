@@ -1,120 +1,475 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Jukebox Remote</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Circular+Std:wght@400;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <style>
+    :root {
+      --green: #1DB954;
+      --green-hover: #1ed760;
+      --bg: #121212;
+      --surface: #181818;
+      --surface2: #282828;
+      --surface3: #3e3e3e;
+      --text: #FFFFFF;
+      --text-muted: #b3b3b3;
+      --text-dim: #6a6a6a;
+      --radius: 8px;
+      --sidebar-w: 340px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
-      margin: 16px;
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
 
-    input, button {
-      font-size: 16px;
-      padding: 10px;
+    /* ── Top nav ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 28px;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      position: sticky;
+      top: 0;
+      z-index: 100;
     }
 
-    .layout {
-      display: grid;
-      grid-template-columns: 360px 1fr;
-      gap: 16px;
-      align-items: start;
-    }
-
-    .panel {
-      border: 1px solid #eee;
-      border-radius: 14px;
-      padding: 12px;
-      background: #fff;
-    }
-
-    .panel h3 {
-      margin: 0 0 10px 0;
-      font-size: 16px;
-    }
-
-    .row { display:flex; gap:8px; }
-
-    /* Search results cards (right pane) */
-    .card {
-      display:grid;
-      grid-template-columns: 120px 1fr auto;
+    .logo {
+      display: flex;
+      align-items: center;
       gap: 10px;
-      align-items:center;
-      padding: 10px 0;
-      border-bottom: 1px solid #eee;
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: -0.3px;
     }
-    img.result-thumb { width:120px; border-radius:10px; }
-    .title { font-weight: 600; }
 
-    /* Queue list (left pane) */
+    .logo svg {
+      width: 28px; height: 28px;
+      fill: var(--green);
+    }
+
+    .room-badge {
+      font-size: 12px;
+      color: var(--text-muted);
+      background: var(--surface2);
+      padding: 4px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--surface3);
+    }
+
+    .room-badge span {
+      color: var(--green);
+      font-weight: 600;
+    }
+
+    /* ── Main layout ── */
+    main {
+      display: grid;
+      grid-template-columns: var(--sidebar-w) 1fr;
+      gap: 0;
+      flex: 1;
+      height: calc(100vh - 65px);
+    }
+
+    /* ── Sidebar (Queue) ── */
+    .sidebar {
+      background: #000;
+      border-right: 1px solid rgba(255,255,255,0.06);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-header {
+      padding: 20px 20px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .sidebar-header h2 {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .count-badge {
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 999px;
+    }
+
+    .queue-scroll {
+      overflow-y: auto;
+      flex: 1;
+      padding: 0 12px 20px;
+    }
+
+    .queue-scroll::-webkit-scrollbar { width: 4px; }
+    .queue-scroll::-webkit-scrollbar-track { background: transparent; }
+    .queue-scroll::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 4px; }
+
+    .queue-empty {
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .queue-empty .icon {
+      font-size: 32px;
+      margin-bottom: 10px;
+      opacity: 0.4;
+    }
+
+    /* Queue Item */
     .queueItem {
       display: grid;
-      grid-template-columns: 56px 1fr auto;
+      grid-template-columns: 20px 48px 1fr auto;
       gap: 10px;
       align-items: center;
-      padding: 10px 0;
-      border-bottom: 1px solid #f0f0f0;
+      padding: 8px 10px;
+      border-radius: var(--radius);
+      transition: background 0.15s;
+      cursor: default;
     }
-    .queueItem:last-child { border-bottom: none; }
 
-    img.queue-thumb { width:56px; height: 42px; object-fit: cover; border-radius: 10px; }
+    .queueItem:hover { background: var(--surface2); }
 
-    .queueTitle {
+    .q-num {
+      font-size: 13px;
+      color: var(--text-dim);
+      text-align: center;
+      font-weight: 500;
+    }
+
+    .queueItem img {
+      width: 48px; height: 36px;
+      object-fit: cover;
+      border-radius: 4px;
+    }
+
+    .q-info { overflow: hidden; }
+
+    .q-title {
+      font-size: 13px;
       font-weight: 600;
-      line-height: 1.2;
-      font-size: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text);
     }
-    .queueMeta {
-      font-size: 12px;
-      opacity: 0.75;
+
+    .q-meta {
+      font-size: 11px;
+      color: var(--text-dim);
       margin-top: 2px;
     }
 
-    button.small {
-      padding: 8px 10px;
+    .q-actions {
+      display: flex;
+      gap: 2px;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+
+    .queueItem:hover .q-actions { opacity: 1; }
+
+    .icon-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 5px;
+      border-radius: 4px;
+      font-size: 14px;
+      line-height: 1;
+      transition: color 0.15s, background 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .icon-btn:hover { color: var(--text); background: var(--surface3); }
+    .icon-btn:disabled { opacity: 0.25; cursor: default; }
+    .icon-btn:disabled:hover { color: var(--text-muted); background: none; }
+
+    .icon-btn.danger:hover { color: #e05555; }
+
+    /* ── Search pane ── */
+    .search-pane {
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .search-header {
+      padding: 24px 28px 20px;
+      flex-shrink: 0;
+    }
+
+    .search-header h1 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 18px;
+      letter-spacing: -0.5px;
+    }
+
+    .search-bar {
+      display: flex;
+      gap: 10px;
+    }
+
+    .search-input-wrap {
+      flex: 1;
+      position: relative;
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-dim);
+      pointer-events: none;
+    }
+
+    #q {
+      width: 100%;
+      background: var(--surface2);
+      border: 2px solid transparent;
+      border-radius: 999px;
+      padding: 12px 16px 12px 42px;
+      font-size: 14px;
+      font-family: inherit;
+      color: var(--text);
+      transition: border-color 0.2s, background 0.2s;
+      outline: none;
+    }
+
+    #q::placeholder { color: var(--text-dim); }
+
+    #q:focus {
+      border-color: var(--text);
+      background: var(--surface3);
+    }
+
+    #searchBtn {
+      background: var(--green);
+      color: #000;
+      border: none;
+      border-radius: 999px;
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+
+    #searchBtn:hover { background: var(--green-hover); transform: scale(1.02); }
+    #searchBtn:active { transform: scale(0.98); }
+
+    /* Results */
+    .results-scroll {
+      overflow-y: auto;
+      flex: 1;
+      padding: 0 28px 28px;
+    }
+
+    .results-scroll::-webkit-scrollbar { width: 4px; }
+    .results-scroll::-webkit-scrollbar-track { background: transparent; }
+    .results-scroll::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 4px; }
+
+    .results-label {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      padding: 4px 0 12px;
+    }
+
+    .card {
+      display: grid;
+      grid-template-columns: 64px 1fr auto;
+      gap: 14px;
+      align-items: center;
+      padding: 10px 12px;
+      border-radius: var(--radius);
+      transition: background 0.15s;
+    }
+
+    .card:hover { background: var(--surface2); }
+
+    .card img {
+      width: 64px; height: 48px;
+      object-fit: cover;
+      border-radius: 4px;
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      color: var(--text);
+    }
+
+    .add-btn {
+      background: transparent;
+      border: 1px solid var(--surface3);
+      color: var(--text-muted);
+      border-radius: 999px;
+      padding: 8px 18px;
+      font-size: 13px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+
+    .add-btn:hover {
+      border-color: var(--text);
+      color: var(--text);
+      transform: scale(1.03);
+    }
+
+    .add-btn:disabled {
+      opacity: 0.5;
+      cursor: default;
+      transform: none;
+    }
+
+    .add-btn.added {
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    .search-placeholder {
+      padding: 60px 20px;
+      text-align: center;
+      color: var(--text-dim);
+    }
+
+    .search-placeholder .big-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.3; }
+    .search-placeholder p { font-size: 15px; line-height: 1.6; }
+    .search-placeholder strong { color: var(--text-muted); }
+
+    .searching-msg {
+      padding: 40px;
+      text-align: center;
+      color: var(--text-muted);
       font-size: 14px;
     }
 
-    .muted { opacity: 0.75; }
-    .pill {
-      display:inline-block;
-      font-size: 12px;
-      padding: 2px 8px;
-      border: 1px solid #eee;
-      border-radius: 999px;
-      margin-left: 8px;
-      opacity: 0.85;
+    /* Divider between items */
+    .card + .card { border-top: 1px solid rgba(255,255,255,0.04); }
+    .queueItem + .queueItem { border-top: 1px solid rgba(255,255,255,0.03); }
+
+    /* ── Responsive ── */
+    @media (max-width: 700px) {
+      main {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+        height: auto;
+      }
+      .sidebar {
+        border-right: none;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        max-height: 40vh;
+      }
+      .search-pane { min-height: 60vh; }
+      header { padding: 14px 16px; }
+      .search-header { padding: 16px 16px 14px; }
+      .results-scroll { padding: 0 16px 20px; }
     }
   </style>
 </head>
 
 <body>
-  <h2>Jukebox Remote 1.2</h2>
-  <div class="muted" style="margin-bottom:12px;">
-    Room: <code id="roomLabel"></code>
-  </div>
 
-  <div class="layout">
-    <!-- LEFT: Queue -->
-    <div class="panel">
-      <h3>Current Queue <span class="pill" id="queueCount">0</span></h3>
-      <div id="queueList" class="muted">Loading…</div>
+  <header>
+    <div class="logo">
+      <!-- Spotify-style logo icon -->
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424a.623.623 0 01-.857.208c-2.348-1.435-5.304-1.76-8.785-.964a.623.623 0 01-.277-1.216c3.809-.87 7.076-.496 9.712 1.115a.623.623 0 01.207.857zm1.223-2.722a.78.78 0 01-1.072.257C14.1 12.2 10.64 11.7 7.4 12.687a.78.78 0 01-.455-1.492c3.655-1.115 8.2-.574 11.308 1.435a.78.78 0 01.257 1.072h-.001zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71a.935.935 0 11-.543-1.79c3.532-1.072 9.404-.865 13.115 1.338a.936.936 0 01-.955 1.61z"/>
+      </svg>
+      Jukebox
     </div>
+    <div class="room-badge">Room: <span id="roomLabel"></span></div>
+  </header>
 
-    <!-- RIGHT: Search/Add -->
-    <div class="panel">
-      <h3>Search YouTube</h3>
-      <div class="row" style="margin-bottom:12px;">
-        <input id="q" placeholder="Search YouTube…" style="flex:1;" />
-        <button id="searchBtn">Search</button>
+  <main>
+    <!-- Queue Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h2>Queue</h2>
+        <span class="count-badge" id="queueCount">0</span>
+      </div>
+      <div class="queue-scroll">
+        <div id="queueList">
+          <div class="queue-empty">
+            <div class="icon">🎵</div>
+            <p>Your queue is empty.<br>Search for songs to add them.</p>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Search Pane -->
+    <section class="search-pane">
+      <div class="search-header">
+        <h1>Search</h1>
+        <div class="search-bar">
+          <div class="search-input-wrap">
+            <span class="search-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+              </svg>
+            </span>
+            <input id="q" type="text" placeholder="What do you want to play?" autocomplete="off" />
+          </div>
+          <button id="searchBtn">Search</button>
+        </div>
       </div>
 
-      <div id="results"></div>
-    </div>
-  </div>
+      <div class="results-scroll">
+        <div id="results">
+          <div class="search-placeholder">
+            <div class="big-icon">🎬</div>
+            <p>Search for any song, artist, or video<br>and add it to the <strong>queue</strong>.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
 
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -137,15 +492,15 @@
     const ROOM = (location.hash || "#default").replace("#", "");
     document.getElementById("roomLabel").textContent = ROOM;
 
-    console.log("[remote] ROOM =", ROOM);
     const queueRef = db.ref(`rooms/${ROOM}/queue`);
-
     const YT_API_KEY = "AIzaSyCFI__LFEbvmy7aULYvNRvr37rdAVasDHU";
 
     const qEl = document.getElementById("q");
     const resultsEl = document.getElementById("results");
     const queueListEl = document.getElementById("queueList");
     const queueCountEl = document.getElementById("queueCount");
+
+    let queueOrdered = [];
 
     function escapeHtml(s) {
       return (s||"").replace(/[&<>"']/g, m =>
@@ -168,25 +523,32 @@
         "https://www.googleapis.com/youtube/v3/search" +
         `?part=snippet&type=video&maxResults=10&q=${encodeURIComponent(query)}` +
         `&key=${YT_API_KEY}`;
-
       const r = await fetch(url);
       return r.json();
     }
 
+    async function getNextPos() {
+      const snap = await queueRef.orderByChild("pos").limitToLast(1).once("value");
+      const val = snap.val();
+      if (!val) return 10;
+      const last = Object.values(val)[0];
+      const lastPos = Number(last?.pos ?? 0);
+      return (Number.isFinite(lastPos) ? lastPos : 0) + 10;
+    }
+
     async function addToQueue(v) {
       try {
+        const pos = await getNextPos();
         const payload = {
-          youtubeId: v.videoId,    // what player likely reads
-          videoId: v.videoId,      // compatibility
+          youtubeId: v.videoId,
+          videoId: v.videoId,
           title: v.title,
           thumb: v.thumb,
           createdAt: firebase.database.ServerValue.TIMESTAMP,
-          status: "queued"
+          status: "queued",
+          pos
         };
-
-        console.log("[remote] writing queue item:", payload);
         await queueRef.push(payload);
-        console.log("[remote] write succeeded ✅");
       } catch (e) {
         console.error("[remote] write failed ❌", e);
         alert("Write failed: " + (e?.message || e));
@@ -195,52 +557,94 @@
     }
 
     async function removeFromQueue(key) {
-      const ok = confirm("Remove this item from the queue?");
-      if (!ok) return;
+      if (!confirm("Remove this item from the queue?")) return;
       try {
         await queueRef.child(key).remove();
-        console.log("[remote] removed:", key);
       } catch (e) {
-        console.error("[remote] remove failed ❌", e);
         alert("Remove failed: " + (e?.message || e));
       }
     }
 
+    async function moveItem(key, direction) {
+      const idx = queueOrdered.findIndex(x => x.key === key);
+      if (idx === -1) return;
+      const swapWith = idx + direction;
+      if (swapWith < 0 || swapWith >= queueOrdered.length) return;
+      const a = queueOrdered[idx];
+      const b = queueOrdered[swapWith];
+      const updates = {};
+      updates[`rooms/${ROOM}/queue/${a.key}/pos`] = Number(b.item?.pos ?? 0);
+      updates[`rooms/${ROOM}/queue/${b.key}/pos`] = Number(a.item?.pos ?? 0);
+      try {
+        await db.ref().update(updates);
+      } catch (e) {
+        alert("Move failed: " + (e?.message || e));
+      }
+    }
+
     // Live queue listener
-    queueRef.orderByChild("createdAt").on("value", (snap) => {
-      const data = snap.val() || {};
-      const entries = Object.entries(data).map(([key, item]) => ({ key, item }));
+    queueRef.orderByChild("pos").on("value", (snap) => {
+      const ordered = [];
+      snap.forEach((childSnap) => {
+        ordered.push({ key: childSnap.key, item: childSnap.val() });
+      });
 
-      queueCountEl.textContent = String(entries.length);
+      queueOrdered = ordered;
+      queueCountEl.textContent = String(queueOrdered.length);
 
-      if (entries.length === 0) {
-        queueListEl.innerHTML = `<div class="muted">Queue is empty.</div>`;
+      if (queueOrdered.length === 0) {
+        queueListEl.innerHTML = `
+          <div class="queue-empty">
+            <div class="icon">🎵</div>
+            <p>Your queue is empty.<br>Search for songs to add them.</p>
+          </div>`;
         return;
       }
 
       queueListEl.innerHTML = "";
-      entries.forEach(({ key, item }) => {
+      queueOrdered.forEach(({ key, item }, i) => {
         const title = escapeHtml(item?.title || "(untitled)");
         const thumb = item?.thumb || "";
-        const status = escapeHtml(item?.status || "queued");
         const createdAt = item?.createdAt;
 
         const row = document.createElement("div");
         row.className = "queueItem";
         row.innerHTML = `
-          <img class="queue-thumb" src="${thumb}" alt="">
-          <div>
-            <div class="queueTitle">${title}</div>
-            <div class="queueMeta">${status} • ${escapeHtml(formatAge(createdAt))}</div>
+          <span class="q-num">${i + 1}</span>
+          <img src="${thumb}" alt="" loading="lazy">
+          <div class="q-info">
+            <div class="q-title">${title}</div>
+            <div class="q-meta">${escapeHtml(formatAge(createdAt))}</div>
           </div>
-          <button class="small">Remove</button>
+          <div class="q-actions">
+            <button class="icon-btn upBtn" title="Move up">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m18 15-6-6-6 6"/></svg>
+            </button>
+            <button class="icon-btn downBtn" title="Move down">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <button class="icon-btn danger rmBtn" title="Remove">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
         `;
-        row.querySelector("button").onclick = () => removeFromQueue(key);
+
+        const up = row.querySelector(".upBtn");
+        const down = row.querySelector(".downBtn");
+        const rm = row.querySelector(".rmBtn");
+
+        if (i === 0) up.disabled = true;
+        if (i === queueOrdered.length - 1) down.disabled = true;
+
+        up.onclick = () => moveItem(key, -1);
+        down.onclick = () => moveItem(key, +1);
+        rm.onclick = () => removeFromQueue(key);
+
         queueListEl.appendChild(row);
       });
     });
 
-    // Search on Enter
+    // Search
     qEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter") document.getElementById("searchBtn").click();
     });
@@ -249,18 +653,27 @@
       const q = qEl.value.trim();
       if (!q) return;
 
-      resultsEl.innerHTML = "Searching…";
+      resultsEl.innerHTML = `<div class="searching-msg">Searching…</div>`;
       const data = await searchYT(q);
 
-      console.log("[remote] YT response:", data);
       if (data?.error) {
-        resultsEl.innerHTML =
-          "YouTube API error: " + escapeHtml(data.error.message || "Unknown error");
+        resultsEl.innerHTML = `<div class="searching-msg" style="color:#e05555;">YouTube API error: ${escapeHtml(data.error.message || "Unknown")}</div>`;
         return;
       }
 
       resultsEl.innerHTML = "";
-      (data.items || []).forEach(it => {
+
+      if (!data.items?.length) {
+        resultsEl.innerHTML = `<div class="searching-msg">No results found.</div>`;
+        return;
+      }
+
+      const label = document.createElement("div");
+      label.className = "results-label";
+      label.textContent = `Results for "${q}"`;
+      resultsEl.appendChild(label);
+
+      data.items.forEach(it => {
         const v = {
           videoId: it.id.videoId,
           title: it.snippet.title,
@@ -270,9 +683,9 @@
         const card = document.createElement("div");
         card.className = "card";
         card.innerHTML = `
-          <img class="result-thumb" src="${v.thumb}">
-          <div class="title">${escapeHtml(v.title)}</div>
-          <button>Add</button>
+          <img src="${v.thumb}" alt="" loading="lazy">
+          <div class="card-title">${escapeHtml(v.title)}</div>
+          <button class="add-btn">Add</button>
         `;
 
         card.querySelector("button").onclick = async () => {
@@ -281,7 +694,8 @@
           btn.textContent = "Adding…";
           try {
             await addToQueue(v);
-            btn.textContent = "Added ✅";
+            btn.textContent = "Added ✓";
+            btn.classList.add("added");
           } catch {
             btn.disabled = false;
             btn.textContent = "Add";
