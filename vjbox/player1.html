@@ -1,0 +1,312 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Jukebox Player</title>
+
+  <style>
+    body {
+      margin: 0;
+      background: #000;
+      color: #fff;
+      font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+    }
+    #playerBox {
+      width: 100vw;
+      height: 56.25vw;
+      max-height: 100vh;
+      max-width: 177.78vh;
+      margin: auto;
+    }
+    #player { width: 100%; height: 100%; }
+    #status {
+      padding: 10px 14px;
+      font-size: 14px;
+      opacity: .85;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    #modeBadge {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: #1DB954;
+      color: #000;
+    }
+    #modeBadge.jukebox { background: #535353; color: #fff; }
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+    }
+    #overlay button {
+      font-size: 22px;
+      padding: 14px 18px;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="playerBox"><div id="player"></div></div>
+  <div id="status">
+    <span id="modeBadge" class="jukebox">Jukebox</span>
+    <span id="statusText">Loading…</span>
+  </div>
+
+  <div id="overlay">
+    <button id="startBtn">Tap to Start</button>
+  </div>
+
+  <!-- YouTube IFrame API -->
+  <script>
+    const tag = document.createElement("script");
+    tag.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(tag);
+  </script>
+
+  <!-- Firebase (compat SDK) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBNcetbvYsxDVAAezn0GdxVaLeW7j2EoO4",
+      authDomain: "jukebox-queue-f62c7.firebaseapp.com",
+      databaseURL: "https://jukebox-queue-f62c7-default-rtdb.firebaseio.com",
+      projectId: "jukebox-queue-f62c7",
+      storageBucket: "jukebox-queue-f62c7.firebasestorage.app",
+      messagingSenderId: "288785705112",
+      appId: "1:288785705112:web:1e721031fc856d056ac8ed"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const ROOM = (location.hash || "#default").replace("#", "");
+    const queueRef = db.ref(`rooms/${ROOM}/queue`);
+    const modeRef = db.ref(`rooms/${ROOM}/mode`);
+    const activePlaylistRef = db.ref(`rooms/${ROOM}/activePlaylist`);
+    const playlistIndexRef = db.ref(`rooms/${ROOM}/playlistIndex`);
+
+    const statusText = document.getElementById("statusText");
+    const modeBadge = document.getElementById("modeBadge");
+    const overlay = document.getElementById("overlay");
+    const startBtn = document.getElementById("startBtn");
+
+    let player, ytReady = false;
+    let currentMode = "jukebox";       // "jukebox" | "playlist"
+    let currentPlaylistId = null;
+    let playlistSongs = [];            // ordered array of songs
+    let playlistIndex = 0;
+    let playing = false;
+    let pendingPlay = false;           // flag to play once player is ready
+
+    function setStatus(msg) { statusText.textContent = msg; }
+
+    function setBadge(mode) {
+      modeBadge.textContent = mode === "playlist" ? "Playlist" : "Jukebox";
+      modeBadge.className = mode === "playlist" ? "" : "jukebox";
+    }
+
+    // ── Mode listener ──
+    modeRef.on("value", async snap => {
+      const newMode = snap.val() || "jukebox";
+      const changed = newMode !== currentMode;
+      currentMode = newMode;
+      setBadge(currentMode);
+
+      if (currentMode === "jukebox") {
+        currentPlaylistId = null;
+        playlistSongs = [];
+        if (changed && ytReady && !playing) {
+          await playNext();
+        }
+      }
+    });
+
+    // ── Active playlist listener ──
+    activePlaylistRef.on("value", async snap => {
+      const newId = snap.val();
+      if (newId === currentPlaylistId) return;
+      currentPlaylistId = newId;
+
+      if (!currentPlaylistId) return;
+
+      // Load playlist songs
+      const plSnap = await db.ref(`rooms/${ROOM}/playlists/${currentPlaylistId}/songs`).orderByChild("pos").once("value");
+      const songs = [];
+      plSnap.forEach(child => songs.push({ key: child.key, ...child.val() }));
+
+      const plData = (await db.ref(`rooms/${ROOM}/playlists/${currentPlaylistId}`).once("value")).val();
+      const shuffle = plData?.shuffle || false;
+
+      if (shuffle) shuffleArray(songs);
+      playlistSongs = songs;
+      playlistIndex = 0;
+
+      if (ytReady) {
+        playing = false;
+        await playNext();
+      } else {
+        pendingPlay = true;
+      }
+    });
+
+    // ── Helpers ──
+    function shuffleArray(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+    }
+
+    // ── Pop next from jukebox queue ──
+    async function popNextFromQueue() {
+      const snap = await queueRef.orderByChild("pos").limitToFirst(1).get();
+      if (!snap.exists()) return null;
+      const key = Object.keys(snap.val())[0];
+      const item = snap.val()[key];
+      await queueRef.child(key).remove();
+      return item;
+    }
+
+    // ── Main playNext ──
+    async function playNext() {
+      if (!ytReady) return;
+
+      if (currentMode === "playlist") {
+        await playNextPlaylistSong();
+      } else {
+        await playNextJukebox();
+      }
+    }
+
+    async function playNextPlaylistSong() {
+      if (playlistSongs.length === 0) {
+        setStatus("Playlist empty — falling back to jukebox mode");
+        await fallbackToJukebox();
+        return;
+      }
+
+      if (playlistIndex >= playlistSongs.length) {
+        // Playlist finished — fall back to jukebox
+        setStatus("Playlist finished — switching to jukebox mode");
+        await fallbackToJukebox();
+        return;
+      }
+
+      const song = playlistSongs[playlistIndex];
+      playlistIndex++;
+
+      const vid = song.videoId;
+      if (!vid) {
+        await playNextPlaylistSong();
+        return;
+      }
+
+      playing = true;
+      setStatus(`${song.title || vid}`);
+      player.loadVideoById(vid);
+      checkAutoplay();
+    }
+
+    async function playNextJukebox() {
+      const next = await popNextFromQueue();
+      if (!next) {
+        playing = false;
+        setStatus("Queue empty — waiting…");
+        return;
+      }
+
+      const vid = next.videoId || next.youtubeId;
+      if (!vid) {
+        setStatus("Queue item missing video ID — skipping");
+        playing = false;
+        return;
+      }
+
+      playing = true;
+      setStatus(`${next.title || vid}`);
+      player.loadVideoById(vid);
+      checkAutoplay();
+    }
+
+    async function fallbackToJukebox() {
+      await db.ref().update({
+        [`rooms/${ROOM}/mode`]: "jukebox",
+        [`rooms/${ROOM}/activePlaylist`]: null
+      });
+      currentMode = "jukebox";
+      currentPlaylistId = null;
+      playlistSongs = [];
+      playing = false;
+      setBadge("jukebox");
+      await playNextJukebox();
+    }
+
+    function checkAutoplay() {
+      setTimeout(() => {
+        try {
+          if (player.getPlayerState() !== YT.PlayerState.PLAYING) {
+            overlay.style.display = "flex";
+          }
+        } catch {
+          overlay.style.display = "flex";
+        }
+      }, 1200);
+    }
+
+    startBtn.onclick = () => {
+      overlay.style.display = "none";
+      try { player.playVideo(); player.unMute(); } catch {}
+    };
+
+    window.onYouTubeIframeAPIReady = function() {
+      player = new YT.Player("player", {
+        playerVars: { autoplay: 1, controls: 1, rel: 0 },
+        events: {
+          onReady: async () => {
+            ytReady = true;
+            setStatus("Ready");
+            if (pendingPlay) {
+              pendingPlay = false;
+              await playNext();
+            } else if (currentMode === "jukebox") {
+              await playNext();
+            }
+          },
+          onStateChange: async (e) => {
+            if (e.data === YT.PlayerState.PLAYING) overlay.style.display = "none";
+            if (e.data === YT.PlayerState.ENDED) {
+              playing = false;
+              await playNext();
+            }
+          },
+          onError: async () => {
+            setStatus("Video error — skipping");
+            playing = false;
+            await playNext();
+          }
+        }
+      });
+    };
+
+    // Jukebox: watch for new items added to queue
+    queueRef.on("child_added", async () => {
+      if (currentMode === "jukebox" && !playing) await playNext();
+    });
+  </script>
+</body>
+</html>
