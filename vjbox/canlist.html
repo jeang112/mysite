@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Jukebox Playlist Seeder</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --green: #1DB954;
+      --bg: #121212;
+      --surface: #181818;
+      --surface2: #282828;
+      --text: #fff;
+      --muted: #b3b3b3;
+      --dim: #6a6a6a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); padding: 40px 24px; max-width: 720px; margin: auto; }
+    h1 { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+    .sub { color: var(--muted); font-size: 14px; margin-bottom: 32px; }
+    .warning {
+      background: #2a1f00;
+      border: 1px solid #a06000;
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-size: 13px;
+      color: #f0c060;
+      margin-bottom: 28px;
+      line-height: 1.6;
+    }
+    .playlist-block {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin-bottom: 16px;
+    }
+    .playlist-block h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+    .playlist-block p { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+    .song-list { list-style: none; }
+    .song-list li {
+      font-size: 13px;
+      color: var(--muted);
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .song-list li:last-child { border-bottom: none; }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+      background: var(--dim);
+    }
+    .status-dot.ok { background: var(--green); }
+    .status-dot.err { background: #e05555; }
+    .status-dot.loading { background: #f0c060; animation: blink 1s infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .seed-btn {
+      background: var(--green);
+      color: #000;
+      border: none;
+      border-radius: 999px;
+      padding: 14px 32px;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      margin-top: 24px;
+      transition: background 0.15s;
+    }
+    .seed-btn:hover { background: #1ed760; }
+    .seed-btn:disabled { opacity: 0.5; cursor: default; }
+
+    #log {
+      margin-top: 24px;
+      background: #000;
+      border-radius: 8px;
+      padding: 16px;
+      font-size: 12px;
+      font-family: monospace;
+      color: #ccc;
+      line-height: 1.8;
+      min-height: 60px;
+      display: none;
+    }
+    .log-ok { color: var(--green); }
+    .log-err { color: #e05555; }
+    .log-info { color: #f0c060; }
+    #doneMsg {
+      display: none;
+      margin-top: 20px;
+      background: #0a2a15;
+      border: 1px solid var(--green);
+      border-radius: 8px;
+      padding: 16px;
+      font-size: 14px;
+      color: var(--green);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>🌱 Playlist Seeder</h1>
+  <p class="sub">One-time setup — creates preloaded playlists in your Firebase room</p>
+
+  <div class="warning">
+    ⚠️ <strong>Run this once per room.</strong> Running it again will create duplicate playlists.
+    After seeding, you can delete this file from your repo.
+  </div>
+
+  <div id="playlistPreviews"></div>
+
+  <button class="seed-btn" id="seedBtn">🌱 Seed Playlists into Firebase</button>
+
+  <div id="log"></div>
+  <div id="doneMsg">✅ All playlists created! You can now open playlist.html to see them.</div>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBNcetbvYsxDVAAezn0GdxVaLeW7j2EoO4",
+      authDomain: "jukebox-queue-f62c7.firebaseapp.com",
+      databaseURL: "https://jukebox-queue-f62c7-default-rtdb.firebaseio.com",
+      projectId: "jukebox-queue-f62c7",
+      storageBucket: "jukebox-queue-f62c7.firebasestorage.app",
+      messagingSenderId: "288785705112",
+      appId: "1:288785705112:web:1e721031fc856d056ac8ed"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const ROOM = (location.hash || "#default").replace("#", "");
+    const YT_KEY = "AIzaSyCFI__LFEbvmy7aULYvNRvr37rdAVasDHU";
+
+    // ── Playlist definitions ──
+    // Just titles — we'll search YouTube live to get real video IDs & thumbnails
+    const PLAYLISTS = [
+      {
+        name: "MTV 90s: Total Request Classics",
+        emoji: "📺",
+        desc: "The biggest videos from MTV's golden era",
+        songs: [
+          "Nirvana - Smells Like Teen Spirit",
+          "Backstreet Boys - I Want It That Way",
+          "Spice Girls - Wannabe",
+          "TLC - Waterfalls",
+          "Alanis Morissette - Ironic",
+          "Green Day - Basket Case",
+          "No Doubt - Don't Speak",
+          "Oasis - Wonderwall",
+          "Weezer - Buddy Holly",
+          "Destiny's Child - Say My Name",
+        ]
+      },
+      {
+        name: "90s Hip Hop & R&B Jams",
+        emoji: "🎤",
+        desc: "The definitive hip hop and R&B videos of the decade",
+        songs: [
+          "Notorious B.I.G - Juicy",
+          "Warren G - Regulate",
+          "Missy Elliott - The Rain Supa Dupa Fly",
+          "Lauryn Hill - Doo Wop That Thing",
+          "Nas - If I Ruled the World",
+          "Jay-Z - Hard Knock Life",
+          "Busta Rhymes - Put Your Hands Where My Eyes Could See",
+          "Erykah Badu - On And On",
+          "Outkast - Rosa Parks",
+          "DMX - Ruff Ryders Anthem",
+        ]
+      },
+      {
+        name: "90s Alternative & Rock",
+        emoji: "🎸",
+        desc: "The alt-rock and grunge anthems that defined a generation",
+        songs: [
+          "Pearl Jam - Jeremy",
+          "Soundgarden - Black Hole Sun",
+          "Red Hot Chili Peppers - Under The Bridge",
+          "Foo Fighters - Everlong",
+          "Smashing Pumpkins - Bullet With Butterfly Wings",
+          "Beck - Loser",
+          "Radiohead - Karma Police",
+          "Nine Inch Nails - Closer",
+          "Hole - Celebrity Skin",
+          "Blink-182 - All The Small Things",
+        ]
+      },
+      {
+        name: "90s Pop Bangers",
+        emoji: "🌟",
+        desc: "The biggest pop hits from the decade",
+        songs: [
+          "Britney Spears - Baby One More Time",
+          "Mariah Carey - Fantasy",
+          "Whitney Houston - I Will Always Love You",
+          "Ricky Martin - Livin La Vida Loca",
+          "Madonna - Vogue",
+          "Janet Jackson - That's The Way Love Goes",
+          "Celine Dion - My Heart Will Go On",
+          "Shania Twain - Man I Feel Like A Woman",
+          "Savage Garden - Truly Madly Deeply",
+          "Hanson - MMMBop",
+        ]
+      }
+    ];
+
+    // Render previews
+    const previewEl = document.getElementById("playlistPreviews");
+    PLAYLISTS.forEach(pl => {
+      const div = document.createElement("div");
+      div.className = "playlist-block";
+      div.innerHTML = `
+        <h3>${pl.emoji} ${pl.name}</h3>
+        <p>${pl.desc}</p>
+        <ul class="song-list" id="songs-${pl.name.replace(/\W/g,'_')}">
+          ${pl.songs.map((s, i) => `<li><span class="status-dot" id="dot-${pl.name.replace(/\W/g,'_')}-${i}"></span>${s}</li>`).join("")}
+        </ul>
+      `;
+      previewEl.appendChild(div);
+    });
+
+    // Logging
+    const logEl = document.getElementById("log");
+    function log(msg, type = "") {
+      logEl.style.display = "block";
+      const span = document.createElement("div");
+      span.className = type ? `log-${type}` : "";
+      span.textContent = msg;
+      logEl.appendChild(span);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setDot(plName, idx, state) {
+      const dot = document.getElementById(`dot-${plName.replace(/\W/g,'_')}-${idx}`);
+      if (dot) { dot.className = `status-dot ${state}`; }
+    }
+
+    async function searchYT(query) {
+      const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=${encodeURIComponent(query + " official music video")}&key=${YT_KEY}`;
+      const r = await fetch(url);
+      const data = await r.json();
+      if (data.error) throw new Error(data.error.message);
+      const item = data.items?.[0];
+      if (!item) return null;
+      return {
+        videoId: item.id.videoId,
+        title: item.snippet.title,
+        thumb: item.snippet.thumbnails.medium.url
+      };
+    }
+
+    async function delay(ms) { return new Promise(res => setTimeout(res, ms)); }
+
+    document.getElementById("seedBtn").onclick = async () => {
+      const btn = document.getElementById("seedBtn");
+      btn.disabled = true;
+      btn.textContent = "Seeding…";
+      log(`Starting seed for room: ${ROOM}`, "info");
+
+      const playlistsRef = db.ref(`rooms/${ROOM}/playlists`);
+
+      for (const pl of PLAYLISTS) {
+        log(`\n📋 Creating: ${pl.name}`, "info");
+
+        // Create playlist node
+        const plRef = playlistsRef.push();
+        await plRef.set({
+          name: pl.name,
+          shuffle: false,
+          createdAt: firebase.database.ServerValue.TIMESTAMP
+        });
+
+        const songsRef = plRef.child("songs");
+        let pos = 10;
+        let successCount = 0;
+
+        for (let i = 0; i < pl.songs.length; i++) {
+          const query = pl.songs[i];
+          setDot(pl.name, i, "loading");
+
+          try {
+            const result = await searchYT(query);
+            if (result) {
+              await songsRef.push({ videoId: result.videoId, title: result.title, thumb: result.thumb, pos });
+              pos += 10;
+              setDot(pl.name, i, "ok");
+              log(`  ✓ ${result.title}`, "ok");
+              successCount++;
+            } else {
+              setDot(pl.name, i, "err");
+              log(`  ✗ Not found: ${query}`, "err");
+            }
+          } catch (e) {
+            setDot(pl.name, i, "err");
+            log(`  ✗ Error for "${query}": ${e.message}`, "err");
+          }
+
+          // Rate limit: ~1 req/sec to stay within YouTube API quota
+          await delay(1100);
+        }
+
+        log(`  → ${successCount}/${pl.songs.length} songs added`, successCount === pl.songs.length ? "ok" : "info");
+      }
+
+      log("\n🎉 Seeding complete!", "ok");
+      btn.textContent = "Done!";
+      document.getElementById("doneMsg").style.display = "block";
+    };
+  </script>
+</body>
+</html>
