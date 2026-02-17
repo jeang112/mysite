@@ -98,7 +98,7 @@ console.log("[player] queue path =", `rooms/${ROOM}/queue`);
     }
 
     async function popNext() {
-      const snap = await queueRef.orderByChild("addedAt").limitToFirst(1).get();
+      const snap = await queueRef.orderByChild("pos").limitToFirst(1).get();
       if (!snap.exists()) return null;
 
       const key = Object.keys(snap.val())[0];
